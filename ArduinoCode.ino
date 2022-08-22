@@ -7,6 +7,7 @@ The code does not react to rain but can detect it. If roof does not move within 
 Some possible expansions are protected for but not implemented, for example environmental sensing
 */
 
+// SW version 2.9 - changed Baud to 19200 (check that ASCOM driver is the same)
 // SW version 2.8 - double-inverted digital inputs and moved mount sensor to port 8 Dec 2016 - improved EEPROM write robustness
 // SW version 2.7 - mount off park alarm was until mount is parkeds
 // SW version 2.6
@@ -81,7 +82,7 @@ byte rainsensor = 0;
 
 void setup()
 {
-	// I/O setup for board
+	// I/O setup for board - on Arduino, this is not the same serial port used for programming.
 	Serial1.begin(19200);  // upped from 9600
 	Serial1.flush();  // clear output buffer
 					  // set pin modes for each of the I/O
