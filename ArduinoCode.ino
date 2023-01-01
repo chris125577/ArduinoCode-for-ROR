@@ -7,10 +7,12 @@ The code does not react to rain but can detect it. If roof does not move within 
 Some possible expansions are protected for but not implemented, for example environmental sensing
 */
 
-// SW version 2.9 - changed Baud to 19200 (check that ASCOM driver is the same)
+// SW version 3.0 Dec '22 - added beepcontrol - make sure to match with latest ASCOM and Obsy control
+// SW version 2.9 - changed Baud to 19200 (check that ASCOM driver is the same),faster status response update after open or close command
 // SW version 2.8 - double-inverted digital inputs and moved mount sensor to port 8 Dec 2016 - improved EEPROM write robustness
 // SW version 2.7 - mount off park alarm was until mount is parkeds
-// SW version 2.6
+// SW version 2.6 - Feb '21 - slight change in open command, recognizing already open before mount position to avoid unecessary error
+// also decided to output sensor override status values ilo cloud and 
 // swapped mount power to alarm output and added delay to its setting
 // SW version  2.5
 // introduced relay control of Rain detector power and added reset to initialise
@@ -20,14 +22,10 @@ Some possible expansions are protected for but not implemented, for example envi
 // added safetysensor enable/disable function, stored in EEPROM - so that the system can act 'dumb'  (from my obsy controller)
 // faster response time 2s, rather than 4s
 // detects crisis and broadcasts if mount moves when roof is closed
-// SW version 2.5  Feb '21
-// faster status response update after open or close command
-// SW version 2.6 Feb '21 - slight change in open command, recognizing already open before mount position to avoid unecessary error
-// also decided to output sensor override status values ilo cloud and 
 
 
 #include <avr/wdt.h>   // library which has a watchdog function
-#include <EEPROM.h>
+#include <EEPROM.h>  // ( EEPROM for Arudino IDE,)
 
 // Pin designations for Arduino controller
 
@@ -76,8 +74,10 @@ bool mountsafe;  // flag used to detect mount moving from safe to unsafe with ro
 // for memory functions, so the Arduino can assume different guises
 int rainflag = 0;  // EEPROM address of rain sensor enable flag
 int parkflag = 1;  // EEPROM address of park sensor enable flag
+int beepflag = 2; // EEPROM address of beep  enable flag
 byte parksensor = 0;
 byte rainsensor = 0;
+byte beepenable = 0;
 
 
 void setup()
@@ -122,6 +122,8 @@ void loop()
 		else if (cmd == "NOPARKSENSE") DisableParkSensor();
 		else if (cmd == "RAINSENSE") EnableRainSensor();
 		else if (cmd == "PARKSENSE") EnableParkSensor();
+		else if (cmd == "BEEPON") EnableBeeper();
+		else if (cmd == "BEEPOFF") DisableBeeper();
 	}
 	DynamicRoof();  // check on ongoing actions and update as necessary
 	DynamicMount(); // check for collision conditions
@@ -171,6 +173,20 @@ void EnableRainSensor()
 void EnableParkSensor()
 {
 	if (EEPROM.read(parkflag) != 1) EEPROM.write(parkflag, 1);
+}
+
+void DisableBeeper()
+{
+	if (EEPROM.read(beepflag) != 0) EEPROM.write(beepflag, 0);
+	digitalWrite(ALARM, LOW); // also turns off beeper
+
+}
+void EnableBeeper()
+{
+	if (EEPROM.read(beepflag) != 1) EEPROM.write(beepflag, 1);
+	digitalWrite(ALARM, HIGH); // beep to acknowledge
+	delay(1000);
+	digitalWrite(ALARM, LOW);
 }
 
 // generic ASCOM commands to open abort and close
@@ -331,7 +347,7 @@ void DynamicMount()
 			shutterStatus = shutterError;  // ASCOM status - caused by mount not being in position.
 			mountsafe = false;
 			Status();  // broadcast immediately
-			digitalWrite(ALARM, HIGH); // turn alarm on
+			if(EEPROM.read(beepflag)) digitalWrite(ALARM, HIGH); // turn alarm on if enabled
 		}
 		else if (RoofClosed())
 			digitalWrite(ALARM, LOW); // turn alarm off
@@ -385,16 +401,14 @@ bool MountSenseFlag()
 	return (EEPROM.read(parkflag) == 1);
 }
 
-// dummy method to report wind level  nn.n - may be replaced by more sensors in the future
-String windLevel()
+// method to return beeper enable flag
+
+bool BeepEnableFlag()
 {
-	return "20.1";
+	return (EEPROM.read(beepflag) == 1);
 }
 
-// Status - broadcasts status in fixed format message every POLLTIME ms:
-//  "$Dry,Roof,Park,rainsense,mountsense,wind#" where Dry and Park are boolean 1/0 and Roof is enumerated 0-4
-// "$b,e,b,b,b,nn.n#"  b - boolean, e - enumberated, n = 0-9
-// also detects rainstatus and sets alarm / closes roof (if safe)
+
 void PollStatus()
 {
 	if ((millis() - polltimer) > POLLTIME)
@@ -413,7 +427,7 @@ void SafetyEvent()  // check rain sensor (switch closure) and compare with roof 
 		{
 			if ((millis() - safetimer) > SAFETIME)
 			{
-				digitalWrite(ALARM, HIGH); // turn on  alarm (if used)
+				if (EEPROM.read(beepflag)) digitalWrite(ALARM, HIGH); // turn alarm on if enabled
 				if (MountParked()) MoveRoof(close);
 			}
 		}
@@ -432,6 +446,10 @@ void SafetyEvent()  // check rain sensor (switch closure) and compare with roof 
 	}
 }
 
+// Status - broadcasts status in fixed format message every POLLTIME ms:
+//  "$Dry,Roof,Park,rainsense,mountsense,beepstatus#" where Dry and Park are boolean 1/0 and Roof is enumerated 0-4
+// "$b,e,b,b,b,b#"  b - boolean, e - enumerated, 11 chars between end markers
+// also detects rainstatus and sets alarm / closes roof (if safe)
 void Status()  // broadcast status over serial port
 {
 	Serial1.print("$");
@@ -445,7 +463,7 @@ void Status()  // broadcast status over serial port
 	Serial1.print(",");
 	Serial1.print(MountSenseFlag());
 	Serial1.print(",");
-	Serial1.print(windLevel());
+	Serial1.print(BeepEnableFlag());
 	Serial1.print("#");
 }
 
@@ -482,7 +500,8 @@ void Initialise()
 	rainsensor = EEPROM.read(rainflag);
 	if (rainsensor != 1 && rainsensor != 0)  // initialise only if invalid byte in eeprom
 	{
-		EEPROM.write(rainflag, 1);   // default is to have sensors
+		EEPROM.write(rainflag, 1);   // default is to have sensors/alarm
 		EEPROM.write(parkflag, 1);
+		EEPROM.write(beepflag, 1);
 	}
 }
