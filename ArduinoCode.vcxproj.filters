@@ -29,6 +29,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ArduinoCode.ino" />
+    <ClCompile Include="ArduinoCode.ino" />
   </ItemGroup>
 </Project>
