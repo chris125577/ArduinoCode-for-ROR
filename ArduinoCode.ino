@@ -20,9 +20,8 @@ Some possible expansions are protected for but not implemented, for example envi
 // SW version  2.4
 // added forceopen and forceclose - to ignore safetysensors - not standard ASCOM command (from my obsy controller)
 // added safetysensor enable/disable function, stored in EEPROM - so that the system can act 'dumb'  (from my obsy controller)
-// faster response time 2s, rather than 4s
+// faster response time 1.5s, rather than 4s
 // detects crisis and broadcasts if mount moves when roof is closed
-// faster response time 1s, rather than 2s
 
 
 #include <avr/wdt.h>   // library which has a watchdog function
@@ -50,7 +49,7 @@ const int rainPowerPin = 25; // relay to turn power on to rain sense
 // global timer variable to check roof move completed in time
 const unsigned long moveTime = 25000; // timeout period for roof to move (25 seconds)
 const unsigned long safeTripTime = 45000;  // timeout period before alarm goes off
-const unsigned long loopTime = 1000;  // period between status broadcasts (1 second)
+const unsigned long loopTime = 1500;  // period between status broadcasts (1 second)
 unsigned long roofTimer;  // variable to hold current time for roof movement
 unsigned long pollTimer; // variable to prompt status update
 unsigned long safeTimer;  // variable to hold current elapsed time for unsafe condition
